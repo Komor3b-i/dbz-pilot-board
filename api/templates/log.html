@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="60">
+  <title>Pilot log - DBZ Pilot Board</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <h1>Pilot log</h1>
+  <div class="sub">Public - anyone can view this to check who was on an account.</div>
+
+  <div class="toolbar">
+    <a href="/">Back to board</a>
+    <a href="/log">Refresh</a>
+  </div>
+
+  <div class="logwrap">
+    {% include "_logtable.html" %}
+  </div>
+</div>
+</body>
+</html>

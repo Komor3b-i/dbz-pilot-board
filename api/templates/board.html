@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DBZ Pilot Board</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+  <h1>DBZ Pilot Board</h1>
+  <div class="sub">{{ active_count }} / {{ total }} accounts in use</div>
+
+  <div class="toolbar">
+    <a href="/">Refresh</a>
+    <a href="/log" target="_blank" rel="noopener">Open full log</a>
+    {% if gated %}<a href="/logout">Sign out</a>{% endif %}
+  </div>
+
+  <div class="grid">
+    {% for a in rows %}
+    <div class="card">
+      <div class="row">
+        <div><span class="badge">{{ a.server }}</span> <span class="name">{{ a.name }}</span></div>
+        {% if a.active %}
+          <span class="pill on">IN USE</span>
+        {% else %}
+          <span class="pill off">AVAILABLE</span>
+        {% endif %}
+      </div>
+
+      <div class="bar {{ 'on' if a.active else '' }}"></div>
+
+      {% if a.active %}
+        <div class="active-info">
+          Piloted by <b>{{ a.pilot }}</b>
+          {% if a.war_time %} &middot; War: <b>{{ a.war_time }}</b>{% endif %}
+          {% if a.since_fmt %} &middot; since {{ a.since_fmt }}{% endif %}
+          {% if a.notes %}<span class="note">{{ a.notes }}</span>{% endif %}
+        </div>
+        <form method="post" action="/stop">
+          <input type="hidden" name="account_id" value="{{ a.id }}">
+          <div class="actions"><button class="off" type="submit">Log off</button></div>
+        </form>
+      {% else %}
+        <form method="post" action="/start">
+          <input type="hidden" name="account_id" value="{{ a.id }}">
+          <input type="text" name="pilot" placeholder="Your name (pilot)" required>
+          <select name="war_time">
+            <option value="">-- war time --</option>
+            {% for w in war_times %}<option value="{{ w }}">{{ w }}</option>{% endfor %}
+          </select>
+          <textarea name="notes" rows="2"
+            placeholder="Notes (optional) - e.g. I will keep this account until the 6PM war"></textarea>
+          <div class="actions"><button class="go" type="submit">Start piloting</button></div>
+        </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="logwrap">
+    <div class="row">
+      <b>Pilot log</b>
+      <a class="mini" href="/log" target="_blank" rel="noopener">full page</a>
+    </div>
+    {% include "_logtable.html" %}
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='board.js') }}"></script>
+</body>
+</html>

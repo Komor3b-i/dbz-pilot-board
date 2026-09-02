@@ -1,0 +1,28 @@
+{% if log %}
+<div class="logtable">
+  <table>
+    <thead>
+      <tr>
+        <th>When</th><th>Server</th><th>Account</th><th>Pilot</th>
+        <th>War</th><th>Notes</th><th>Action</th><th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in log %}
+      <tr>
+        <td>{{ e.when }}</td>
+        <td>{{ e.server }}</td>
+        <td>{{ e.account_name }}</td>
+        <td>{{ e.pilot }}</td>
+        <td>{{ e.war_time }}</td>
+        <td class="notes-cell">{{ e.notes }}</td>
+        <td>{{ e.action }}</td>
+        <td>{{ e.get('duration', '') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No activity yet.</div>
+{% endif %}
