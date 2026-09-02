@@ -304,5 +304,32 @@ def stop():
     return redirect(url_for("index"))
 
 
+# ---------------------------------------------------------------------------
+# On Vercel the catch-all rewrite in vercel.json hands this function the
+# destination path ("/api/index") instead of the URL the visitor asked for.
+# Strip that prefix so Flask still routes "/", "/log", "/start", etc.
+# ---------------------------------------------------------------------------
+_VERCEL_PREFIXES = ("/api/index.py", "/api/index")
+
+
+class _NormalizePath:
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "") or ""
+        for pref in _VERCEL_PREFIXES:
+            if path == pref:
+                environ["PATH_INFO"] = "/"
+                break
+            if path.startswith(pref + "/"):
+                environ["PATH_INFO"] = path[len(pref):]
+                break
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _NormalizePath(app.wsgi_app)
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
