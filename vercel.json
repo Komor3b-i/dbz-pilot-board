@@ -4,7 +4,8 @@
       "includeFiles": "api/{templates,static}/**"
     }
   },
-  "rewrites": [
-    { "source": "/(?!static/).*", "destination": "/api/index" }
+  "routes": [
+    { "src": "/static/(.*)", "dest": "api/static/$1" },
+    { "src": "/(.*)", "dest": "/api/index" }
   ]
 }
