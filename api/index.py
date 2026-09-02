@@ -30,7 +30,8 @@ import os
 import secrets
 from datetime import datetime, timezone
 
-import requests
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from flask import Flask, redirect, render_template, request, session, url_for
 
 app = Flask(__name__)
@@ -71,69 +72,137 @@ except Exception:  # pragma: no cover - fallback when tz data is unavailable
     TZ = timezone.utc
 
 # ---------------------------------------------------------------------------
-# Storage (Vercel KV / Upstash Redis REST, with an in-memory fallback)
+# Database (Neon PostgreSQL)
 # ---------------------------------------------------------------------------
-KV_URL = (
-    os.environ.get("KV_REST_API_URL")
-    or os.environ.get("UPSTASH_REDIS_REST_URL")
-    or ""
-).rstrip("/")
-KV_TOKEN = (
-    os.environ.get("KV_REST_API_TOKEN")
-    or os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-    or ""
-)
-
-_mem = {"statuses": {}, "pilot_log": []}
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
-def _kv(*cmd):
-    resp = requests.post(
-        KV_URL,
-        headers={"Authorization": f"Bearer {KV_TOKEN}"},
-        json=list(cmd),
-        timeout=5,
-    )
-    resp.raise_for_status()
-    return resp.json().get("result")
+def _get_db():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not set")
+    return psycopg2.connect(DATABASE_URL)
+
+
+def _init_db():
+    try:
+        conn = _get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS statuses (
+                account_id TEXT PRIMARY KEY,
+                active BOOLEAN DEFAULT FALSE,
+                pilot TEXT DEFAULT '',
+                war_time TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                since TEXT DEFAULT ''
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pilot_log (
+                id SERIAL PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                account_name TEXT NOT NULL,
+                server TEXT NOT NULL,
+                pilot TEXT NOT NULL,
+                war_time TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                action TEXT NOT NULL,
+                duration TEXT DEFAULT ''
+            )
+            """
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"DB init warning: {e}")
+
+
+_init_db()
 
 
 def load_statuses():
-    if KV_URL:
-        raw = _kv("GET", "statuses")
-        return json.loads(raw) if raw else {}
-    return dict(_mem["statuses"])
+    try:
+        conn = _get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM statuses")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return {row["account_id"]: dict(row) for row in rows}
+    except Exception:
+        return {}
 
 
 def save_statuses(statuses):
-    if KV_URL:
-        _kv("SET", "statuses", json.dumps(statuses))
-    else:
-        _mem["statuses"] = statuses
+    try:
+        conn = _get_db()
+        cur = conn.cursor()
+        for aid, st in statuses.items():
+            cur.execute(
+                """
+                INSERT INTO statuses (account_id, active, pilot, war_time, notes, since)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (account_id) DO UPDATE SET
+                  active = EXCLUDED.active,
+                  pilot = EXCLUDED.pilot,
+                  war_time = EXCLUDED.war_time,
+                  notes = EXCLUDED.notes,
+                  since = EXCLUDED.since
+                """,
+                (aid, st.get("active"), st.get("pilot"), st.get("war_time"), st.get("notes"), st.get("since")),
+            )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"save_statuses error: {e}")
 
 
 def add_log(entry):
-    line = json.dumps(entry)
-    if KV_URL:
-        _kv("LPUSH", "pilot_log", line)
-        _kv("LTRIM", "pilot_log", 0, LOG_LIMIT - 1)
-    else:
-        _mem["pilot_log"].insert(0, line)
-        del _mem["pilot_log"][LOG_LIMIT:]
+    try:
+        conn = _get_db()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO pilot_log
+            (timestamp, account_id, account_name, server, pilot, war_time, notes, action, duration)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                entry.get("timestamp"),
+                entry.get("account_id"),
+                entry.get("account_name"),
+                entry.get("server"),
+                entry.get("pilot"),
+                entry.get("war_time"),
+                entry.get("notes"),
+                entry.get("action"),
+                entry.get("duration"),
+            ),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"add_log error: {e}")
 
 
 def load_log():
-    if KV_URL:
-        rows = _kv("LRANGE", "pilot_log", 0, LOG_LIMIT - 1) or []
-    else:
-        rows = list(_mem["pilot_log"])
-    out = []
-    for r in rows:
-        try:
-            out.append(json.loads(r))
-        except (TypeError, ValueError):
-            pass
-    return out
+    try:
+        conn = _get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(f"SELECT * FROM pilot_log ORDER BY id DESC LIMIT {LOG_LIMIT}")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [dict(row) for row in rows]
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
