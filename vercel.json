@@ -1,4 +1,7 @@
 {
+  "env": {
+    "TIMEZONE": "Asia/Singapore"
+  },
   "functions": {
     "api/index.py": {
       "includeFiles": "api/{templates,static}/**"
